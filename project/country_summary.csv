@@ -1,0 +1,25 @@
+country,total_titles,avg_imdb,top_platform,top_genre
+Argentina,149,6.7,Netflix,Drama
+Australia,294,6.74,Netflix,Drama
+Brazil,301,6.85,Amazon Prime Video,Drama
+Canada,440,6.76,Netflix,Drama
+China,220,6.84,Netflix,Comedy
+Denmark,71,6.86,Amazon Prime Video,Drama
+Egypt,86,6.85,Netflix,Drama
+France,555,6.83,Netflix,Drama
+Germany,443,6.8,Netflix,Drama
+India,1429,6.81,Netflix,Drama
+Indonesia,69,6.8,Disney+,Drama
+Israel,74,6.78,Amazon Prime Video,Drama
+Italy,217,6.92,Netflix,Drama
+Japan,907,6.85,Netflix,Drama
+Mexico,299,6.8,Netflix,Drama
+Nigeria,146,6.87,Netflix,Drama
+Philippines,79,6.82,Netflix,Drama
+South Korea,1073,6.76,Netflix,Drama
+Spain,611,6.82,Netflix,Drama
+Sweden,74,6.95,Netflix,Drama
+Thailand,73,6.74,Netflix,Drama
+Turkey,285,6.82,Netflix,Drama
+United Kingdom,1369,6.8,Netflix,Drama
+United States,5736,6.81,Netflix,Drama
