@@ -1,23 +1,18 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import warnings
 
 warnings.filterwarnings("ignore")
 
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 
-from utils import PLATFORM_COLORS, load_data
+from src.data_loader import PLATFORM_COLORS, load_data
+from src.features import train_model
 
 
 df, df_year = load_data()
@@ -33,96 +28,37 @@ st.caption(
 )
 st.divider()
 
-ML_BASE = ["platform", "primary_genre", "type", "release_year", "duration_minutes"]
-ML_FEATURES = ML_BASE + ["duration_missing"]
-ML_TARGET = "imdb_rating"
-ML_CAT = ["platform", "primary_genre", "type"]
-
-
-@st.cache_resource
-def train_model(df):
-    df_ml = df[ML_BASE + [ML_TARGET]].copy()
-
-    df_ml["duration_missing"] = df_ml["duration_minutes"].isna().astype(int)
-
-    genre_mean = df_ml.groupby("primary_genre")["duration_minutes"].transform("mean")
-    overall_mean = df_ml["duration_minutes"].mean()
-    df_ml["duration_minutes"] = (
-        df_ml["duration_minutes"].fillna(genre_mean).fillna(overall_mean)
-    )
-
-    df_ml = df_ml.dropna(subset=ML_FEATURES + [ML_TARGET])
-
-    df_enc = df_ml.copy()
-    le_dict = {}
-    for col in ML_CAT:
-        le = LabelEncoder()
-        df_enc[col] = le.fit_transform(df_enc[col].astype(str))
-        le_dict[col] = le
-
-    X = df_enc[ML_FEATURES]
-    y = df_enc[ML_TARGET]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-    model = RandomForestRegressor(n_estimators=200, random_state=42, n_jobs=-1)
-    model.fit(X_train, y_train)
-
-    y_pred = model.predict(X_test)
-    mae = mean_absolute_error(y_test, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-    r2 = r2_score(y_test, y_pred)
-
-    compare_list = [("선형 회귀", LinearRegression()), ("랜덤 포레스트", model)]
-    try:
-        from xgboost import XGBRegressor
-
-        xgb = XGBRegressor(n_estimators=200, random_state=42, n_jobs=-1, verbosity=0)
-        xgb.fit(X_train, y_train)
-        compare_list.append(("XGBoost", xgb))
-    except ImportError:
-        pass
-
-    cmp_rows = []
-    for name, m in compare_list:
-        if name == "선형 회귀":
-            m.fit(X_train, y_train)
-        p = m.predict(X_test)
-        cmp_rows.append(
-            {
-                "모델": name,
-                "MAE": round(mean_absolute_error(y_test, p), 3),
-                "RMSE": round(np.sqrt(mean_squared_error(y_test, p)), 3),
-                "R²": round(r2_score(y_test, p), 3),
-            }
-        )
-    df_compare = pd.DataFrame(cmp_rows)
-
-    # 하이퍼파라미터 탐색: n_estimators 비교
-    tune_rows = []
-    for n_est in [50, 100, 200, 300]:
-        m_tune = RandomForestRegressor(n_estimators=n_est, random_state=42, n_jobs=-1)
-        m_tune.fit(X_train, y_train)
-        p_tune = m_tune.predict(X_test)
-        tune_rows.append({
-            "n_estimators": n_est,
-            "MAE": round(mean_absolute_error(y_test, p_tune), 3),
-            "RMSE": round(np.sqrt(mean_squared_error(y_test, p_tune)), 3),
-            "R²": round(r2_score(y_test, p_tune), 3),
-        })
-    df_tune = pd.DataFrame(tune_rows)
-
-    return model, le_dict, mae, rmse, r2, len(X_train), df_compare, df_tune
-
-
 with st.spinner("모델 학습 중... (최초 1회만 실행됩니다)"):
-    model, le_dict, mae, rmse, r2, n_train, df_compare, df_tune = train_model(df)
+    (
+        model, feature_cols, known_cats,
+        mae, rmse, r2,
+        cv_r2_mean, cv_r2_std,
+        n_train,
+        df_compare, df_tune,
+        xgb_available,
+    ) = train_model(df)
 
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("학습 데이터", f"{n_train:,}건")
 m2.metric("평균 절대 오차 (MAE)", f"{mae:.3f}점")
 m3.metric("RMSE", f"{rmse:.3f}점")
 m4.metric("결정계수 (R²)", f"{r2:.3f}")
+
+st.markdown("---")
+
+# 5-Fold 교차 검증
+st.subheader("📐 5-Fold 교차 검증 (Cross-Validation)")
+st.caption(
+    "학습 데이터를 5개 구간으로 나눠 순환 검증합니다. "
+    "홀드아웃 R²와 CV R² 차이가 작을수록 과적합 없이 일반화됩니다."
+)
+cv1, cv2 = st.columns(2)
+cv1.metric("CV R² 평균 (5-Fold)", f"{cv_r2_mean:.3f}")
+cv2.metric("CV R² 표준편차", f"{cv_r2_std:.4f}")
+if cv_r2_std < 0.05:
+    st.success("✅ 표준편차 < 0.05 — 모델이 안정적으로 일반화됩니다.")
+else:
+    st.warning("⚠️ 표준편차가 크면 학습 데이터 구성에 따라 성능 변동이 있을 수 있습니다.")
 
 st.markdown("---")
 
@@ -133,6 +69,17 @@ st.caption(
     "MAE·RMSE는 낮을수록, R²는 높을수록 좋습니다."
 )
 
+if not xgb_available:
+    st.info(
+        "ℹ️ XGBoost가 설치되어 있지 않아 비교에서 제외되었습니다. "
+        "`pip install xgboost` 로 추가하면 3모델 비교가 활성화됩니다."
+    )
+
+bar_colors = [
+    PLATFORM_COLORS["Netflix"],
+    PLATFORM_COLORS["Amazon Prime Video"],
+    PLATFORM_COLORS["Disney+"],
+]
 fig_cmp = px.bar(
     df_compare.melt(id_vars="모델", var_name="지표", value_name="값"),
     x="모델",
@@ -140,11 +87,7 @@ fig_cmp = px.bar(
     color="모델",
     facet_col="지표",
     text_auto=".3f",
-    color_discrete_sequence=[
-        PLATFORM_COLORS["Netflix"],
-        PLATFORM_COLORS["Amazon Prime Video"],
-        PLATFORM_COLORS["Disney+"],
-    ],
+    color_discrete_sequence=bar_colors[: len(df_compare)],
 )
 fig_cmp.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
 fig_cmp.update_layout(template="plotly_white", height=350, showlegend=False)
@@ -176,13 +119,32 @@ with st.expander("📐 하이퍼파라미터 선택 과정 (n_estimators 탐색)
 
 st.markdown("---")
 
-# Feature Importance
-feat_imp = pd.DataFrame(
-    {
-        "특성": ["플랫폼", "장르", "유형 (영화/TV)", "출시 연도", "런타임", "런타임 결측 여부"],
-        "중요도": model.feature_importances_,
-    }
-).sort_values("중요도", ascending=True)
+# Feature Importance — OHE 컬럼을 카테고리별로 합산
+_label_map = {
+    "release_year":     "출시 연도",
+    "duration_minutes": "런타임",
+    "duration_missing": "런타임 결측 여부",
+}
+_prefix_map = {
+    "platform_":      "플랫폼",
+    "primary_genre_": "장르",
+    "type_":          "유형 (영화/TV)",
+}
+
+grouped_imp = {}
+for col, imp in zip(feature_cols, model.feature_importances_):
+    label = _label_map.get(col)
+    if label is None:
+        for prefix, pname in _prefix_map.items():
+            if col.startswith(prefix):
+                label = pname
+                break
+    grouped_imp[label or col] = grouped_imp.get(label or col, 0.0) + imp
+
+feat_imp = (
+    pd.DataFrame(list(grouped_imp.items()), columns=["특성", "중요도"])
+    .sort_values("중요도", ascending=True)
+)
 
 fig_imp = px.bar(
     feat_imp,
@@ -217,43 +179,58 @@ st.subheader("🎯 나의 콘텐츠 평점 예측해보기")
 
 col_a, col_b = st.columns(2)
 with col_a:
-    platform_in = st.selectbox("플랫폼", sorted(df["platform"].dropna().unique()))
-    genre_in = st.selectbox("장르", sorted(df["primary_genre"].dropna().unique()))
-    type_in = st.selectbox("유형", ["Movie", "TV Show"])
+    platform_in = st.selectbox("플랫폼", sorted(known_cats["platform"]))
+    genre_in    = st.selectbox("장르",   sorted(known_cats["primary_genre"]))
+    type_in     = st.selectbox("유형",   sorted(known_cats["type"]))
 with col_b:
-    year_in = st.slider("출시 연도", YEAR_MIN, YEAR_MAX, min(2020, YEAR_MAX))
+    year_in     = st.slider("출시 연도", YEAR_MIN, YEAR_MAX, min(2020, YEAR_MAX))
     duration_in = st.slider("런타임 (분)", 10, 300, 100)
 
 if st.button("⭐ 평점 예측하기", type="primary"):
-    try:
-        input_row = {
-            "platform": le_dict["platform"].transform([platform_in])[0],
-            "primary_genre": le_dict["primary_genre"].transform([genre_in])[0],
-            "type": le_dict["type"].transform([type_in])[0],
-            "release_year": year_in,
-            "duration_minutes": duration_in,
-            "duration_missing": 0,
-        }
-        X_in = pd.DataFrame([input_row])[ML_FEATURES]
-        pred = round(float(model.predict(X_in)[0]), 2)
+    errors = []
+    if platform_in not in known_cats["platform"]:
+        errors.append(f"알 수 없는 플랫폼: '{platform_in}'")
+    if genre_in not in known_cats["primary_genre"]:
+        errors.append(f"알 수 없는 장르: '{genre_in}'")
+    if type_in not in known_cats["type"]:
+        errors.append(f"알 수 없는 유형: '{type_in}'")
 
-        if pred >= 7.5:
-            grade, color = "우수 (High)", "#2ecc71"
-        elif pred >= 6.5:
-            grade, color = "보통 (Average)", "#f39c12"
-        else:
-            grade, color = "저조 (Low)", "#e74c3c"
+    if errors:
+        st.error(" | ".join(errors))
+    else:
+        try:
+            row = {col: 0 for col in feature_cols}
+            row["release_year"]     = year_in
+            row["duration_minutes"] = duration_in
+            row["duration_missing"] = 0
+            for prefix, val in [
+                ("platform", platform_in),
+                ("primary_genre", genre_in),
+                ("type", type_in),
+            ]:
+                ohe_col = f"{prefix}_{val}"
+                if ohe_col in row:
+                    row[ohe_col] = 1
 
-        st.markdown(
-            f"""
-            <div style="text-align:center; padding:28px; border-radius:14px;
-                        background:{color}22; border:2px solid {color};">
-                <h2 style="color:{color}; margin:0;">⭐ 예상 IMDB 평점: {pred} / 10</h2>
-                <p style="color:{color}; font-size:18px; margin:10px 0 0 0;">{grade}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    except Exception as e:
-        st.error(f"예측 오류: {e}")
+            X_in = pd.DataFrame([row])[feature_cols]
+            pred = round(float(model.predict(X_in)[0]), 2)
 
+            if pred >= 7.5:
+                grade, color = "우수 (High)", "#2ecc71"
+            elif pred >= 6.5:
+                grade, color = "보통 (Average)", "#f39c12"
+            else:
+                grade, color = "저조 (Low)", "#e74c3c"
+
+            st.markdown(
+                f"""
+                <div style="text-align:center; padding:28px; border-radius:14px;
+                            background:{color}22; border:2px solid {color};">
+                    <h2 style="color:{color}; margin:0;">⭐ 예상 IMDB 평점: {pred} / 10</h2>
+                    <p style="color:{color}; font-size:18px; margin:10px 0 0 0;">{grade}</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        except Exception as e:
+            st.error(f"예측 오류: {type(e).__name__} — {e}")

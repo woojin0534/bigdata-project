@@ -1,7 +1,7 @@
-import os
+﻿import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import warnings
 
@@ -11,7 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from utils import COUNTRY_ISO, PLATFORM_COLORS, hex_to_rgba, load_data, render_sidebar
+from src.data_loader import COUNTRY_ISO, PLATFORM_COLORS, hex_to_rgba, load_data, render_sidebar
 
 
 df, df_year = load_data()

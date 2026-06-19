@@ -1,15 +1,21 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import plotly.express as px
 import streamlit as st
 
-from utils import PLATFORM_COLORS, load_data
+from src.data_loader import PLATFORM_COLORS, load_data, render_sidebar
 
 
-df, _ = load_data()
+df, df_year = load_data()
+year_range, selected_platforms = render_sidebar(df, df_year)
+df_f = df[
+    (df.release_year >= year_range[0])
+    & (df.release_year <= year_range[1])
+    & df.platform.isin(selected_platforms)
+]
 
 st.title("📺 글로벌 OTT 트렌드 시각화 스토리보드")
 st.markdown(
@@ -18,11 +24,18 @@ st.markdown(
 st.divider()
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("총 콘텐츠", f"{len(df):,}편")
-c2.metric("분석 플랫폼", f"{df.platform.nunique()}개")
-c3.metric("분석 기간", f"{int(df.release_year.min())}–{int(df.release_year.max())}")
-c4.metric("수록 국가", f"{df.country.nunique()}개국")
-c5.metric("평균 IMDB 평점", f"{df.imdb_rating.dropna().mean():.2f}점")
+c1.metric("총 콘텐츠", f"{len(df_f):,}편")
+c2.metric("분석 플랫폼", f"{df_f.platform.nunique()}개")
+c3.metric(
+    "분석 기간",
+    f"{int(df_f.release_year.min())}–{int(df_f.release_year.max())}"
+    if not df_f.empty else "-",
+)
+c4.metric("수록 국가", f"{df_f.country.nunique()}개국")
+c5.metric(
+    "평균 IMDB 평점",
+    f"{df_f.imdb_rating.dropna().mean():.2f}점" if not df_f.empty else "-",
+)
 
 st.divider()
 
@@ -30,7 +43,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("플랫폼별 콘텐츠 분포")
-    plat_cnt = df["platform"].value_counts().reset_index()
+    plat_cnt = df_f["platform"].value_counts().reset_index()
     plat_cnt.columns = ["platform", "count"]
     fig_pie = px.pie(
         plat_cnt,
@@ -45,7 +58,7 @@ with col1:
 
 with col2:
     st.subheader("영화 vs TV 시리즈 분포")
-    type_cnt = df["type"].value_counts().reset_index()
+    type_cnt = df_f["type"].value_counts().reset_index()
     type_cnt.columns = ["type", "count"]
     fig_type = px.bar(
         type_cnt,
@@ -84,4 +97,3 @@ st.caption(
     "데이터 출처: TMDB API (The Movie Database) — themoviedb.org  |  "
     "수집 기간: 2026년 6월  |  라이선스: CC BY-NC 4.0"
 )
-

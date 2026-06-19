@@ -1,7 +1,7 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import warnings
 
@@ -9,13 +9,18 @@ warnings.filterwarnings("ignore")
 
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
-from utils import PLATFORM_COLORS, load_data
+from src.data_loader import PLATFORM_COLORS, load_data, render_sidebar
 
 
-df, _ = load_data()
+df, df_year = load_data()
+year_range, selected_platforms = render_sidebar(df, df_year)
+df_f = df[
+    (df.release_year >= year_range[0])
+    & (df.release_year <= year_range[1])
+    & df.platform.isin(selected_platforms)
+]
 
 st.title("📊 EDA & 데이터 이해")
 st.caption("데이터 구조·결측·이상치·분포를 탐색하고 파생 특성을 발견합니다.")
@@ -103,7 +108,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.markdown("**IMDB 평점 분포 (히스토그램)**")
-    df_r = df.dropna(subset=["imdb_rating"])
+    df_r = df_f.dropna(subset=["imdb_rating"])
     avg_r = df_r["imdb_rating"].mean()
     fig_hist = px.histogram(
         df_r,
@@ -126,7 +131,7 @@ with col1:
 
 with col2:
     st.markdown("**영화 런타임 분포 (플랫폼별 박스 플롯)**")
-    df_dur = df[(df.type == "Movie") & df.duration_minutes.notna()]
+    df_dur = df_f[(df_f.type == "Movie") & df_f.duration_minutes.notna()]
     fig_box = px.box(
         df_dur,
         x="platform",
@@ -155,7 +160,7 @@ st.subheader("4. 주요 컬럼 분포 탐색")
 tab1, tab2, tab3, tab4 = st.tabs(["연도별", "장르별", "플랫폼 × 유형", "국가별"])
 
 with tab1:
-    yr_cnt = df.groupby(["release_year", "type"]).size().reset_index(name="count")
+    yr_cnt = df_f.groupby(["release_year", "type"]).size().reset_index(name="count")
     fig_yr = px.bar(
         yr_cnt,
         x="release_year",
@@ -175,7 +180,7 @@ with tab1:
     )
 
 with tab2:
-    genre_cnt = df["primary_genre"].value_counts().head(15).reset_index()
+    genre_cnt = df_f["primary_genre"].value_counts().head(15).reset_index()
     genre_cnt.columns = ["장르", "편수"]
     fig_genre = px.bar(
         genre_cnt,
@@ -200,7 +205,7 @@ with tab2:
     )
 
 with tab3:
-    pt_cnt = df.groupby(["platform", "type"]).size().reset_index(name="count")
+    pt_cnt = df_f.groupby(["platform", "type"]).size().reset_index(name="count")
     fig_pt = px.bar(
         pt_cnt,
         x="platform",
@@ -219,7 +224,7 @@ with tab3:
 
 with tab4:
     cntry_cnt = (
-        df.dropna(subset=["country"])
+        df_f.dropna(subset=["country"])
         .groupby("country")
         .size()
         .reset_index(name="편수")
@@ -271,7 +276,6 @@ ML 예측기 및 시각화에 활용한 **파생 특성** 목록입니다.
 col_fe1, col_fe2 = st.columns(2)
 with col_fe1:
     dur_miss_cnt = df["duration_minutes"].isna().sum()
-    dur_miss_pct = dur_miss_cnt / len(df) * 100
     feat_df = pd.DataFrame(
         {
             "duration_missing": [0, 1],
@@ -291,9 +295,9 @@ with col_fe1:
     st.plotly_chart(fig_fe, use_container_width=True)
 
 with col_fe2:
-    tv_miss = df[df.type == "TV Show"]["duration_minutes"].isna().sum()
-    tv_total = (df.type == "TV Show").sum()
-    movie_miss = df[df.type == "Movie"]["duration_minutes"].isna().sum()
+    tv_miss    = df[df.type == "TV Show"]["duration_minutes"].isna().sum()
+    tv_total   = (df.type == "TV Show").sum()
+    movie_miss  = df[df.type == "Movie"]["duration_minutes"].isna().sum()
     movie_total = (df.type == "Movie").sum()
     st.markdown("**결측 패턴과 콘텐츠 유형의 관계**")
     st.dataframe(
@@ -320,4 +324,3 @@ st.success(
     "✅ **결론**: `duration_missing`은 원본 데이터에 없는 파생 특성으로, "
     "ML 모델의 Feature Importance에서도 상위권에 위치해 IMDB 평점 예측에 실질적 기여를 확인했습니다."
 )
-

@@ -1,14 +1,20 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 
-from utils import load_data
+from src.data_loader import load_data, render_sidebar
 
 
-df, _ = load_data()
+df, df_year = load_data()
+year_range, selected_platforms = render_sidebar(df, df_year)
+df_f = df[
+    (df.release_year >= year_range[0])
+    & (df.release_year <= year_range[1])
+    & df.platform.isin(selected_platforms)
+]
 
 st.title("📝 결론 & 한계 & 향후 과제")
 st.caption(
@@ -32,10 +38,10 @@ Netflix·Disney+·Amazon Prime Video 3사가 주도하는 이 시장에서 다�
 
 **데이터**: TMDB API로 수집한 3개 플랫폼 총 **{:,}편** (Netflix {:,}편 · Amazon Prime Video {:,}편 · Disney+ {:,}편)
 """.format(
-        len(df),
-        len(df[df.platform == "Netflix"]),
-        len(df[df.platform == "Amazon Prime Video"]),
-        len(df[df.platform == "Disney+"]),
+        len(df_f),
+        len(df_f[df_f.platform == "Netflix"]),
+        len(df_f[df_f.platform == "Amazon Prime Video"]),
+        len(df_f[df_f.platform == "Disney+"]),
     )
 )
 
@@ -101,7 +107,7 @@ with col2:
 - **낮은 R²**: IMDB 평점은 감독·배우·스토리 등 메타데이터에 없는 요소에 크게 의존
 - **피처 부족**: 실제 시청 데이터(조회 수, 완주율), 예산, 제작진 정보 미포함
 - **시계열 미고려**: 출시 연도는 포함하나, 플랫폼 추가 날짜·시청 트렌드 변화 미반영
-- **범주형 인코딩**: LabelEncoding 사용 — 장르·플랫폼 간 순서 관계가 없음에도 순서 부여됨
+- **범주형 인코딩**: OneHotEncoding(OHE) 적용 — 범주 간 가상 순서 관계 없이 올바르게 처리됨
 """
     )
 
@@ -128,4 +134,3 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
-

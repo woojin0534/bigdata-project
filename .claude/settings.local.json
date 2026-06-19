@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "PowerShell(python -c \"import justwatch; print\\('installed'\\)\" 2>&1)",
+      "PowerShell(python -m pip show justwatch 2>&1)",
+      "PowerShell(python -c \"import requests; r = requests.get\\('https://api.themoviedb.org/3/genre/movie/list', params={'api_key': 'a9773d590a0b0703237ae1a4e4efc820', 'language': 'en-US'}, timeout=10\\); print\\(r.status_code, r.json\\(\\).get\\('status_message','OK'\\)\\)\")",
+      "PowerShell(Get-Process python -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process python -ErrorAction SilentlyContinue | Select-Object Id, @{N='CPU\\(s\\)';E={[math]::Round\\($_.CPU,1\\)}}, @{N='MB';E={[math]::Round\\($_.WorkingSet/1MB,0\\)}}, StartTime)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(pip show *)",
+      "Bash(streamlit run *)",
+      "Bash(curl -s http://localhost:8501)"
+    ]
+  }
+}
